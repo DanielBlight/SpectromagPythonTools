@@ -1,0 +1,1 @@
+& "C:\Users\mbcx4db7\Downloads\Create-SpectromagSnapshot.ps1"
