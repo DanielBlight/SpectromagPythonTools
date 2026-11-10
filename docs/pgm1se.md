@@ -2,12 +2,11 @@
 
 ## Status
 
-This is an additive, calibration-gated FIRST implementation, not a hardware-
-validated acquisition system. The supplied project snapshot ends at FILE
-INVENTORY and contains no source, tests or pyproject.toml contents. Existing
-Keithley files, project settings and dependencies have therefore NOT been edited.
-The integration snippet below targets the callback API established in this chat;
-it is not evidence that the current on-disk map routine was inspected.
+The current project snapshot has now been inspected. The commissioning GUI uses
+this existing driver through configuration.py and gui/control.py, without changing
+its native command set, calibration gate or cached-readback limitations.
+See docs/COMMISSIONING.md for controls and the first hardware-test procedure.
+This remains an offline-tested, not hardware-validated, implementation.
 
 ## Files and responsibilities
 
@@ -156,8 +155,7 @@ They do not validate the DLL ABI against an installed Windows SDK, actual angle
 conversion, USB-loss detection, settling, sample coordinates or existing project
 integration. Ruff was unavailable in the authoring environment; run local lint.
 
-Next: inspect a COMPLETE SpectromagPythonTools snapshot and read-only PPC102
-inspection output alongside the installed SDK conversion documentation. Resolve
-count scaling and readback freshness before a separate small-motion hardware
-validation. Preserve the simple device/routine split; do not add a GUI, duplicate
-map engine, new framework or automatic full-range calibration sweep.
+Next: follow docs/COMMISSIONING.md for read-only inspection, verified angular
+conversion and a separate small-motion hardware validation. Preserve the simple
+device/routine split and reuse the existing map engine. Do not add an automatic
+full-range calibration sweep or bypass the conversion gate.

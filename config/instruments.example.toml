@@ -1,0 +1,40 @@
+# Copy to instruments.local.toml only if you do not already have a local file.
+# Placeholders are deliberately invalid. No hardware is connected at GUI startup.
+[pgm1se]
+serial = "95XXXXXX"
+x_channel = 1
+y_channel = 2
+max_abs_mrad = 10.0
+kinesis_directory = 'C:\Program Files\Thorlabs\Kinesis'
+response_wait_s = 0.1
+
+# Optional verified conversion tables. Do not invent the raw count values.
+# [pgm1se.x_calibration]
+# verified = true
+# raw_minus_10 = REPLACE_WITH_VERIFIED_INTEGER
+# raw_plus_10 = REPLACE_WITH_VERIFIED_INTEGER
+# evidence = "Installed SDK reference / matched controller verification"
+# [pgm1se.y_calibration]
+# verified = true
+# raw_minus_10 = REPLACE_WITH_VERIFIED_INTEGER
+# raw_plus_10 = REPLACE_WITH_VERIFIED_INTEGER
+# evidence = "Installed SDK reference / matched controller verification"
+
+[keithley]
+resource = "USB0::0x05E6::0xXXXX::PLACEHOLDER::INSTR"
+model = "2602B" # Replace if your model differs.
+channel = "a"
+timeout_ms = 5000
+visa_library = ""
+remote_sense = false
+# No DUT voltage/current limits are supplied as supposedly safe defaults.
+# Enter those in the GUI based on your sample.
+
+[photocurrent_map]
+position_unit = "mrad"
+mirror_tolerance_mrad = 0.01
+mirror_stable_s = 0.2
+mirror_timeout_s = 10.0
+pixel_settle_s = 0.1
+samples_per_pixel = 3
+serpentine = true
