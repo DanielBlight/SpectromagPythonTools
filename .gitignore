@@ -8,3 +8,17 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Project development and local output
+.venv/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+/data/*
+!/data/.gitkeep
+/logs/*
+!/logs/.gitkeep
+/config/*.local.toml
