@@ -1,0 +1,8 @@
+Authoring environment: 3.12.16 (main, Oct 28 2026, 03:07:06) [GCC 13.2.0]
+Command: PYTHONPATH=src python -m pytest -q tests/test_pgm1se.py
+........................................                                 [100%]
+40 passed in 3.07s
+
+Ruff unavailable; not run. Attempt to obtain Ruff was blocked by registry HTTP 403.
+No vendor DLLs, hardware, USB, laser or project-wide tests were exercised.
+Existing project source was unavailable in the truncated attached snapshot.
