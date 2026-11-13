@@ -15,6 +15,11 @@ from spectromagpythontools.configuration import (
     numeric,
 )
 from spectromagpythontools.gui.control import HardwareWorker, Session
+from spectromagpythontools.gui.preferences import (
+    FIELDS,
+    load_preferences,
+    save_preferences,
+)
 
 
 class Application:
@@ -28,6 +33,9 @@ class Application:
         self.path = Path(config_path).expanduser().resolve()
         self.project = self.path.parent.parent
         self.values = {}
+        self._preferences_loading = True
+        self._preferences_after = None
+        self._preferences_traces = []
         self.buttons = []
         self.editors = []
         self.mirror_editors = []
@@ -88,7 +96,14 @@ class Application:
         # No worker is started until all widgets exist.
         if self.worker is None:
             self.worker = HardwareWorker()
+        self._preference_defaults = {
+            key: variable.get()
+            for key, variable in self.values.items()
+            if key in FIELDS
+        }
         self.load()
+        self._preferences_loading = False
+        self._watch_preferences()
         self.update_controls()
         root.after(100, self.poll)
 
@@ -182,7 +197,7 @@ class Application:
             right,
             text=(
                 "Identify uses the driver connection sequence, which forces the selected SMU output off.\n\n"
-                "Edits apply to the next connection only and are NOT saved to your local TOML. "
+                "Connection/calibration edits apply to the next connection only; local TOML is not changed. Operational settings are remembered per user. "
                 "Disconnect the mirror before changing its connection or calibration.\n\n"
                 "Native SDK readbacks are cached. This application cannot certify freshness or "
                 "interrupt a blocked native call. Do not use it as a laser safety interlock."
@@ -220,7 +235,7 @@ class Application:
                 ("x", "X target (mrad)", 0),
                 ("y", "Y target (mrad)", 0),
                 ("jog_step", "Jog step (mrad)", 0.01),
-                ("mirror_tolerance_mrad", "Tolerance (mrad)", 0.01),
+                ("mirror_tolerance_mrad", "Tolerance (mrad)", 0.005),
                 ("mirror_stable_s", "Stable interval (s)", 0.2),
                 ("mirror_timeout_s", "Move timeout (s)", 10),
             )
@@ -285,10 +300,8 @@ class Application:
             ("y_start", "Y start (mrad)", -0.05),
             ("y_end", "Y end (mrad)", 0.05),
             ("ny", "Y points (1..100)", 5),
-            ("max_abs_bias_v", "DUT max |bias| (V) REQUIRED", ""),
-            ("max_current_a", "DUT max current (A) REQUIRED", ""),
             ("bias_v", "Bias (V)", 0),
-            ("current_limit_a", "Compliance (A) REQUIRED", ""),
+            ("max_current_a", "Max current / compliance (A)", ""),
             ("nplc", "Integration (NPLC)", 1),
             ("current_range_a", "Current range (A), blank=auto", ""),
             ("samples", "Readings per pixel", 3),
@@ -327,13 +340,11 @@ class Application:
         self.ttk.Label(
             display, text="Live total current (A), not dark-subtracted"
         ).pack()
-        self.canvas = self.tk.Canvas(
-            display, width=450, height=420, background="#dddddd", highlightthickness=0
-        )
-        self.canvas.pack(fill="both", expand=True)
-        self.canvas.bind("<Configure>", lambda event: self.draw_map())
+        from spectromagpythontools.gui.map_plot import MapPlot
+
+        self.map_plot = MapPlot(display)
         self.scale_text = self.tk.StringVar(
-            value="Grey = not acquired; red = positive, blue = negative"
+            value="Inferno/magma; grey = not acquired; colourbar shows current"
         )
         self.ttk.Label(display, textvariable=self.scale_text, wraplength=450).pack(
             pady=5
@@ -368,9 +379,14 @@ class Application:
             )
             return
         try:
-            self.path = Path(self.config_path.get()).expanduser().resolve()
+            self._cancel_preferences_save()
+            self._preferences_loading = True
+            candidate = Path(self.config_path.get()).expanduser().resolve()
+            config = load_config(candidate)
+            self.path = candidate
             self.project = self.path.parent.parent
-            config = load_config(self.path)
+            for key, value in self._preference_defaults.items():
+                self.values[key].set(value)
             for section in ("pgm1se", "keithley"):
                 for key, value in config.get(section, {}).items():
                     if key in self.values:
@@ -400,6 +416,14 @@ class Application:
                 target = aliases.get(key, key)
                 if target in self.values:
                     self.values[target].set(str(value))
+            # Migrate old TOML conservatively: use the smaller explicit current
+            # ceiling/compliance, rather than silently raising compliance.
+            candidates = []
+            for key in ("max_current_a", "current_limit_a"):
+                if mapping.get(key) not in (None, ""):
+                    candidates.append(numeric(mapping[key], key, 1e-10, 0.1))
+            if candidates:
+                self.values["max_current_a"].set(str(min(candidates)))
             self.serpentine.set(mapping.get("serpentine", True) is True)
             self.remote.set(
                 config.get("keithley", {}).get("remote_sense", False) is True
@@ -415,12 +439,16 @@ class Application:
                 self.log_file = (
                     logs / f"gui-{datetime.now():%Y%m%d-%H%M%S-%f}.log"
                 ).open("x", encoding="utf-8")
+            self._restore_preferences()
             self.log(
-                f"Loaded {self.path}; edits are in memory only. No hardware connected."
+                f"Loaded {self.path}; operational settings remembered per user. "
+                "Local TOML unchanged; no hardware connected."
             )
         except Exception as exc:  # noqa: BLE001
             self.log(f"Configuration not loaded: {exc}")
             self.messagebox.showerror("Configuration", str(exc))
+        finally:
+            self._preferences_loading = False
 
     def browse_config(self):
         path = self.dialog.askopenfilename(filetypes=[("TOML configuration", "*.toml")])
@@ -437,6 +465,9 @@ class Application:
 
     def config(self):
         values = {key: variable.get().strip() for key, variable in self.values.items()}
+        bias = numeric(values["bias_v"], "bias (V)", -20, 20)
+        values["max_abs_bias_v"] = abs(bias)
+        values["current_limit_a"] = values["max_current_a"]
         values["pgm1se"] = {
             "serial": values["serial"],
             "x_channel": integer(values["x_channel"], "X channel", 1, 2),
@@ -478,6 +509,7 @@ class Application:
             config = self.config()
             if overrides:
                 config.update(overrides)
+            self._save_preferences()
             self.worker.submit(operation, config)
             self.busy = True
             self.status.set(
@@ -596,45 +628,9 @@ class Application:
         self.stop_button.configure(state="normal" if self.busy else "disabled")
 
     def draw_map(self):
-        canvas = self.canvas
-        canvas.delete("all")
-        width, height = max(canvas.winfo_width(), 200), max(canvas.winfo_height(), 180)
-        nx, ny = self.grid_shape
-        xs, ys = self.grid_axes
-        left, top, right, bottom = 55, 25, width - 15, height - 45
-        dx, dy = (right - left) / nx, (bottom - top) / ny
-        scale = max((abs(v) for v in self.cells.values()), default=0)
-        for row in range(ny):
-            for column in range(nx):
-                value = self.cells.get((row, column))
-                if value is None:
-                    color = "#bbbbbb"
-                else:
-                    strength = min(abs(value) / (scale or 1), 1)
-                    fade = round(255 * (1 - strength))
-                    color = (
-                        f"#ff{fade:02x}{fade:02x}"
-                        if value >= 0
-                        else f"#{fade:02x}{fade:02x}ff"
-                    )
-                x0, y0 = left + column * dx, bottom - (row + 1) * dy
-                canvas.create_rectangle(
-                    x0, y0, x0 + dx, y0 + dy, fill=color, outline=""
-                )
-        canvas.create_text(left, bottom + 15, text=f"{xs[0]:.4g}", anchor="w")
-        canvas.create_text(right, bottom + 15, text=f"{xs[-1]:.4g}", anchor="e")
-        canvas.create_text(
-            (left + right) / 2, height - 10, text="X mirror angle (mrad)"
-        )
-        canvas.create_text(left - 5, bottom, text=f"{ys[0]:.4g}", anchor="e")
-        canvas.create_text(left - 5, top, text=f"{ys[-1]:.4g}", anchor="e")
-        canvas.create_text(
-            (left + right) / 2, 10, text="Y mirror angle (mrad), first row at bottom"
-        )
-        if self.cells:
-            self.scale_text.set(
-                f"Symmetric color scale +/-{scale:.4g} A; grey = not acquired"
-            )
+        plot = getattr(self, "map_plot", None)
+        if plot is not None:
+            plot.update(*self.grid_axes, self.cells)
 
     def poll(self):
         redraw = False
@@ -658,6 +654,11 @@ class Application:
                 )
             elif kind == "result":
                 result = payload["value"] or {}
+                if payload["operation"] == "map":
+                    completed = getattr(self, "map_completed", None)
+                    if callable(completed):
+                        completed(result)
+
                 self.log(f"{payload['operation']}: {json.dumps(result, default=str)}")
                 if "position" in result:
                     x, y = result["position"]
@@ -715,12 +716,70 @@ class Application:
             ),
         ):
             return
+        self._save_preferences()
         self.closing = True
         self.worker.cancel.set()
         self.status.set(
             "Closing: waiting for I/O and cleanup. Do not unplug active hardware."
         )
         self.update_controls()
+
+    def _restore_preferences(self):
+        try:
+            data = load_preferences(self.path)
+            for key, value in data["values"].items():
+                if key in self.values:
+                    self.values[key].set(value)
+            if "remote_sense" in data["flags"]:
+                self.remote.set(data["flags"]["remote_sense"])
+            if "serpentine" in data["flags"]:
+                self.serpentine.set(data["flags"]["serpentine"])
+            # Never restore connection, prepared state, calibration acknowledgement,
+            # commissioning acknowledgement or a previous CSV filename.
+            self.ack.set(False)
+        except (OSError, ValueError, TypeError) as exc:
+            self.log(f"Saved settings ignored: {exc}")
+
+    def _cancel_preferences_save(self):
+        if self._preferences_after is not None:
+            self.root.after_cancel(self._preferences_after)
+            self._preferences_after = None
+
+    def _save_preferences(self):
+        self._cancel_preferences_save()
+        if self._preferences_loading:
+            return
+        try:
+            save_preferences(
+                self.path,
+                {
+                    key: variable.get()
+                    for key, variable in self.values.items()
+                    if key in FIELDS
+                },
+                {
+                    "remote_sense": self.remote.get(),
+                    "serpentine": self.serpentine.get(),
+                },
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            self.log(f"Settings could not be saved: {exc}")
+
+    def _preferences_changed(self, *_args):
+        if self._preferences_loading or self.closing:
+            return
+        self._cancel_preferences_save()
+        self._preferences_after = self.root.after(600, self._save_preferences)
+
+    def _watch_preferences(self):
+        variables = [variable for key, variable in self.values.items() if key in FIELDS]
+        variables.extend((self.remote, self.serpentine))
+        for variable in variables:
+            trace = getattr(variable, "trace_add", None)
+            if callable(trace):
+                self._preferences_traces.append(
+                    (variable, trace("write", self._preferences_changed))
+                )
 
 
 def launch(config_path, tab="mirror"):
@@ -729,4 +788,12 @@ def launch(config_path, tab="mirror"):
     root = tk.Tk()
     app = Application(root, config_path)
     app.tabs.select(1 if tab == "mirror" else 2)
-    root.mainloop()
+    try:
+        root.mainloop()
+    finally:
+        # Join before returning/releasing the per-project instance lock.
+        # No forced thread or SDK termination, even for blocked native calls.
+        app.worker.request_shutdown()
+        app.worker.wait_stopped()
+        if app.log_file is not None and not app.log_file.closed:
+            app.log_file.close()

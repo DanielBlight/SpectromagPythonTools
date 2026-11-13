@@ -22,7 +22,7 @@ class FakeBackend:
     def __init__(self):
         self.calls = []
         self.positions = {1: 0, 2: 0}
-        self.bits = 0x80000501
+        self.bits = 2147484929
         self.mode = 2
         self.source = 0
         self.identity = "PPC102"
@@ -45,12 +45,13 @@ class FakeBackend:
             self.bits,
             self.mode,
             self.source,
+            1,
             time.time(),
         )
 
     def prepare(self, channel):
         self.calls.append(("prepare", channel))
-        self.mode, self.source = 2, 0
+        self.mode, self.source = (2, 0)
 
     def set_position(self, channel, raw):
         self.calls.append(("set", channel, raw))
@@ -67,7 +68,6 @@ class FakeBackend:
 
 def make(**kwargs):
     backend = FakeBackend()
-    # Synthetic scaling for TESTS ONLY, not a PGM1SE calibration claim.
     calibration = AxisCalibration(-10000, 10000, "synthetic test fixture")
     mount = PGM1SE(
         "95000001",
@@ -76,14 +76,14 @@ def make(**kwargs):
         y_calibration=calibration,
         **kwargs,
     )
-    return mount, backend
+    return (mount, backend)
 
 
 def ready(**kwargs):
     mount, backend = make(**kwargs)
     mount.connect()
     mount.prepare_closed_loop()
-    return mount, backend
+    return (mount, backend)
 
 
 def test_no_io_on_construction():
@@ -173,7 +173,7 @@ def test_both_targets_validated_before_motion():
     assert not any(call[0] == "set" for call in backend.calls)
 
 
-@pytest.mark.parametrize("bit", [0x800, 0x1000, 0x2000, 0x40000000])
+@pytest.mark.parametrize("bit", [2048, 4096, 8192, 1073741824])
 def test_fault_prevents_motion(bit):
     mount, backend = ready()
     backend.bits |= bit
@@ -182,7 +182,7 @@ def test_fault_prevents_motion(bit):
     assert not any(call[0] == "set" for call in backend.calls)
 
 
-@pytest.mark.parametrize("bit", [1, 0x100, 0x400, 0x80000000])
+@pytest.mark.parametrize("bit", [1, 1024, 2147483648])
 def test_missing_status(bit):
     mount, backend = ready()
     backend.bits &= ~bit
@@ -274,7 +274,7 @@ def test_native_prepare_preserves_other_io_fields():
 
     def set_io(serial, channel, pointer):
         recorded.append(
-            tuple(getattr(pointer._obj, name) for name, _ in _IOSettings._fields_)
+            tuple((getattr(pointer._obj, name) for name, _ in _IOSettings._fields_))
         )
         return 0
 
@@ -307,3 +307,37 @@ def test_native_set_error_is_not_retried():
     with pytest.raises(GimbalError, match="7"):
         backend.set_position(1, 123)
     assert calls == [(1, 123)]
+
+
+def test_mount_uses_batched_backend_read():
+    class BatchedBackend(FakeBackend):
+        def read_channels(self, channels):
+            channels = tuple(channels)
+            self.calls.append(("read_channels", channels))
+
+            return tuple(
+                RawState(
+                    channel,
+                    self.positions[channel],
+                    self.bits,
+                    self.mode,
+                    self.source,
+                    1,
+                    0.0,
+                )
+                for channel in channels
+            )
+
+    backend = BatchedBackend()
+    mount = PGM1SE(
+        "95000001",
+        backend=backend,
+    )
+
+    mount.connect()
+    states = mount.raw_state()
+    mount.close()
+
+    assert [state.channel for state in states] == [1, 2]
+    assert ("read_channels", (1, 2)) in backend.calls
+    assert not any(call[0] == "read" for call in backend.calls)

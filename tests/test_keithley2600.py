@@ -53,6 +53,33 @@ class Fake:
             return str(self.sweep)
         if c == "print(localnode.linefreq)":
             return "50"
+        if c.startswith("local function spb_acquire()"):
+            import re
+
+            if self.failure:
+                raise self.failure
+            size = int(re.search(r"for k=1,(\d+) do", c).group(1))
+            fields = self.response.split()
+            if (
+                len(fields) != 5
+                or fields[2] != "false"
+                or fields[3] != "1"
+                or self.error
+                or self.v["source.output"] != 1
+            ):
+                self.v["source.output"] = 0
+                return "SPB1 ERR batch_failed"
+            try:
+                valid = all(abs(float(fields[i])) < 9e37 for i in (0, 1, 4))
+                valid = valid and float(fields[4]) > 0
+            except ValueError:
+                valid = False
+            if not valid:
+                self.v["source.output"] = 0
+                return "SPB1 ERR batch_failed"
+            return f"SPB1 OK {size} " + " ".join(
+                [fields[0], fields[1], fields[4]] * size
+            )
         if c.startswith("local i,v"):
             if self.failure:
                 raise self.failure
@@ -306,3 +333,16 @@ def test_device_has_no_mapping_api():
     assert not hasattr(keithley2600, "scan_map")
     assert not hasattr(keithley2600, "Point")
     assert not hasattr(KeithleyPhotocurrent, "read_point")
+
+
+def test_configuration_accepts_2636b_float_rounding():
+    smu, session = make()
+    session.v["source.limiti"] = 1.0000000475e-3
+
+    smu.settings = Settings(0.5, 1e-3, nplc=1.0)
+    session.v["source.func"] = 1
+    session.v["source.levelv"] = 0.5
+    session.v["measure.nplc"] = 1.0
+    session.v["source.output"] = 0
+
+    smu._verify_settings()

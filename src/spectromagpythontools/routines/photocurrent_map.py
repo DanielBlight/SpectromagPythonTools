@@ -26,6 +26,8 @@ class Point:
     mean_current_a: float
     sample_std_current_a: float | None
     mean_voltage_v: float
+    settle_elapsed_s: float = 0.0
+    acquisition_elapsed_s: float = 0.0
 
 
 def read_point(
@@ -47,17 +49,26 @@ def read_point(
         raise ValueError("settle_s must be in 0..60 seconds")
 
     try:
+        settle_started = time.perf_counter()
         if cancel is None:
             time.sleep(settle_s)
         elif cancel.wait(settle_s):
             raise AcquisitionCancelled("Cancelled during settling")
 
-        readings = []
-        for _ in range(samples):
-            if cancel is not None and cancel.is_set():
-                raise AcquisitionCancelled("Cancelled before measurement")
-            readings.append(smu.read())
-
+        settle_elapsed = time.perf_counter() - settle_started
+        acquisition_started = time.perf_counter()
+        batch_reader = getattr(smu, "read_many", None)
+        if callable(batch_reader) and samples > 1:
+            readings = list(batch_reader(samples, cancel=cancel))
+        else:
+            readings = []
+            for _ in range(samples):
+                if cancel is not None and cancel.is_set():
+                    raise AcquisitionCancelled("Cancelled before measurement")
+                readings.append(smu.read())
+        acquisition_elapsed = time.perf_counter() - acquisition_started
+        if len(readings) != samples:
+            raise InstrumentError("Measurement returned the wrong number of readings")
         if cancel is not None and cancel.is_set():
             raise AcquisitionCancelled("Cancelled after measurement")
 
@@ -67,6 +78,8 @@ def read_point(
             statistics.mean(currents),
             statistics.stdev(currents) if samples > 1 else None,
             statistics.mean(reading.voltage_v for reading in readings),
+            settle_elapsed,
+            acquisition_elapsed,
         )
     except BaseException as exc:
         try:
@@ -120,7 +133,7 @@ def scan_map(
     if acquisition_metadata is not None and not isinstance(acquisition_metadata, dict):
         raise TypeError("acquisition_metadata must be a dictionary or None")
     metadata = {
-        "schema": "photocurrent-map-v1",
+        "schema": "photocurrent-map-v2",
         "created_host_unix_s": time.time(),
         "identity": smu.identity,
         "resource": smu.resource,
@@ -135,7 +148,18 @@ def scan_map(
         "serpentine": serpentine,
         "max_abs_bias_v": smu.max_abs_bias_v,
         "max_current_a": smu.max_current_a,
-        "timestamp_basis": "host Unix seconds, not hardware trigger time",
+        "timestamp_basis": "host Unix seconds; batched readings share batch bounds, not per-conversion times",
+        "measurement_transport": "TSP batches of up to 3 for multiple samples; individual raw readings retained",
+        "timing_basis": "host perf_counter elapsed seconds; acquisition includes communication and checks",
+    }
+    import os
+
+    metadata["mirror_policy"] = {
+        "name": os.environ.get("SPECTROMAG_MIRROR_POLICY", "verified"),
+        "extra_delay_s": os.environ.get("SPECTROMAG_MIRROR_DELAY_S", "0.05"),
+        "full_check_interval_s": os.environ.get("SPECTROMAG_MIRROR_FULL_CHECK_S", "2"),
+        "freshness": "cached SDK readback; not response-acknowledged",
+        "one_check_semantics": "one in-tolerance observation, not continuous stability; verified fallback",
     }
     if acquisition_metadata is not None:
         metadata["acquisition"] = acquisition_metadata
@@ -144,6 +168,14 @@ def scan_map(
     if cancel is not None and cancel.is_set():
         raise AcquisitionCancelled("Cancelled before output enable")
     count = 0
+    totals = {
+        "motion_s": 0.0,
+        "settle_s": 0.0,
+        "acquisition_s": 0.0,
+        "save_s": 0.0,
+        "callback_s": 0.0,
+    }
+    scan_started = time.perf_counter()
     with Path(output_csv).open("x", newline="", encoding="utf-8") as stream:
         stream.write("# " + metadata_json + "\n")
         writer = csv.writer(stream)
@@ -159,6 +191,9 @@ def scan_map(
                 "sample_std_current_a",
                 "mean_voltage_v",
                 "readings_json",
+                "motion_s",
+                "settle_elapsed_s",
+                "acquisition_s",
             ]
         )
         stream.flush()
@@ -173,7 +208,9 @@ def scan_map(
                     for column in columns:
                         if cancel is not None and cancel.is_set():
                             raise AcquisitionCancelled("Cancelled before motion")
+                        motion_started = time.perf_counter()
                         actual_x, actual_y = move_and_wait(xs[column], y)
+                        motion_elapsed = time.perf_counter() - motion_started
                         actual_x, actual_y = (
                             finite(actual_x, "actual_x"),
                             finite(actual_y, "actual_y"),
@@ -181,6 +218,10 @@ def scan_map(
                         point = read_point(
                             smu, samples=samples, settle_s=settle_s, cancel=cancel
                         )
+                        totals["motion_s"] += motion_elapsed
+                        totals["settle_s"] += point.settle_elapsed_s
+                        totals["acquisition_s"] += point.acquisition_elapsed_s
+                        save_started = time.perf_counter()
                         writer.writerow(
                             [
                                 row,
@@ -195,11 +236,16 @@ def scan_map(
                                 json.dumps(
                                     [asdict(r) for r in point.readings], allow_nan=False
                                 ),
+                                motion_elapsed,
+                                point.settle_elapsed_s,
+                                point.acquisition_elapsed_s,
                             ]
                         )
                         stream.flush()
+                        totals["save_s"] += time.perf_counter() - save_started
                         count += 1
                         if on_pixel is not None:
+                            callback_started = time.perf_counter()
                             on_pixel(
                                 {
                                     "row": row,
@@ -212,19 +258,44 @@ def scan_map(
                                     "voltage_v": point.mean_voltage_v,
                                     "completed": count,
                                     "total": len(xs) * len(ys),
+                                    "timing": {
+                                        "motion_s": motion_elapsed,
+                                        "settle_s": point.settle_elapsed_s,
+                                        "acquisition_s": point.acquisition_elapsed_s,
+                                    },
                                 }
+                            )
+                            totals["callback_s"] += (
+                                time.perf_counter() - callback_started
                             )
         except BaseException as exc:
             try:
                 stream.write(
                     "# "
                     + json.dumps(
-                        {"status": "partial", "pixels": count, "error": str(exc)}
+                        {
+                            "status": "partial",
+                            "pixels": count,
+                            "error": str(exc),
+                            "timing_totals_s": totals,
+                            "elapsed_s": time.perf_counter() - scan_started,
+                        }
                     )
                     + "\n"
                 )
             except BaseException as cleanup:  # noqa: BLE001
                 exc.add_note(f"Could not write partial footer: {cleanup}")
             raise
-        stream.write("# " + json.dumps({"status": "complete", "pixels": count}) + "\n")
+        stream.write(
+            "# "
+            + json.dumps(
+                {
+                    "status": "complete",
+                    "pixels": count,
+                    "timing_totals_s": totals,
+                    "elapsed_s": time.perf_counter() - scan_started,
+                }
+            )
+            + "\n"
+        )
     return count

@@ -1,4 +1,4 @@
-﻿import spectromagpythontools
+import spectromagpythontools
 
 
 def test_package_imports() -> None:

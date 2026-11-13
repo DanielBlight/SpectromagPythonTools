@@ -40,10 +40,19 @@ class Session:
         if self.mount is not None:
             raise RuntimeError("Disconnect the mirror before reconnecting")
         mount = self.mount_factory(config["pgm1se"])
-        mount.connect()
-        self.mount = mount
-        self.prepared = False
-        return self.inspect({}, cancel)
+        try:
+            mount.connect()
+            self.mount = mount
+            self.prepared = False
+            return self.inspect({}, cancel)
+        except BaseException as exc:
+            self.mount = None
+            self.prepared = False
+            try:
+                mount.close()
+            except BaseException as cleanup:  # noqa: BLE001
+                exc.add_note(f"Candidate mirror cleanup failed: {cleanup}")
+            raise
 
     def inspect(self, config, cancel):
         if self.mount is None:
@@ -137,9 +146,16 @@ class Session:
             }
 
     def map(self, config, cancel):
+        from spectromagpythontools.routines.scan_position_cache import (
+            scan_position_reuse,
+        )
+
         if not self.prepared:
             raise RuntimeError("Connect and prepare the mirror first")
-        if config.get("commissioning_ack") is not True:
+        if (
+            getattr(self, "requires_ack", True)
+            and config.get("commissioning_ack") is not True
+        ):
             raise ValueError(
                 "Acknowledge SDK freshness and laser/beam-path checks before mapping"
             )
@@ -161,33 +177,48 @@ class Session:
         if cancel.is_set():
             raise AcquisitionCancelled("Cancelled before acquisition")
         metadata = {
-            "application": "SpectromagPythonTools commissioning GUI v1",
+            "application": config.get(
+                "application", "SpectromagPythonTools commissioning GUI v1"
+            ),
             "mirror": mount_metadata(self.mount),
             "motion": motion,
-            "commissioning_ack": True,
+            **(
+                {"commissioning_ack": True}
+                if getattr(self, "requires_ack", True)
+                else {}
+            ),
             "measurement_label": str(config.get("measurement_label", "unclassified")),
             "dark_subtracted": False,
+            "scan_position_reuse": "scan-scoped accepted SDK coordinate; post-move verification retained in one_check mode",
         }
-        with self.smu_factory(
-            config["keithley"], max_abs_bias_v=max_v, max_current_a=max_i
-        ) as smu:
+        from spectromagpythontools.routines.motion_profile import capture_motion
+
+        profile_path = target.with_suffix(".motion.txt")
+        with (
+            capture_motion(self.mount, profile_path),
+            self.smu_factory(
+                config["keithley"], max_abs_bias_v=max_v, max_current_a=max_i
+            ) as smu,
+        ):
             smu.configure(settings)
-            count = scan_map(
-                smu,
-                xs=xs,
-                ys=ys,
-                move_and_wait=gimbal_mover(self.mount, cancel=cancel, **motion),
-                output_csv=target,
-                samples=samples,
-                settle_s=settle,
-                serpentine=config.get("serpentine", True),
-                position_unit="mrad",
-                cancel=cancel,
-                acquisition_metadata=metadata,
-                on_pixel=lambda pixel: self.emit("pixel", pixel),
-            )
+            with scan_position_reuse(self.mount):
+                count = scan_map(
+                    smu,
+                    xs=xs,
+                    ys=ys,
+                    move_and_wait=gimbal_mover(self.mount, cancel=cancel, **motion),
+                    output_csv=target,
+                    samples=samples,
+                    settle_s=settle,
+                    serpentine=config.get("serpentine", True),
+                    position_unit="mrad",
+                    cancel=cancel,
+                    acquisition_metadata=metadata,
+                    on_pixel=lambda pixel: self.emit("pixel", pixel),
+                )
         return {
             "pixels": count,
+            "motion_profile": str(profile_path),
             "output_csv": str(target),
             "message": "Map complete; Keithley output off confirmed; mirror left at last position",
         }
@@ -207,6 +238,7 @@ class HardwareWorker:
         self._guard = threading.Lock()
         self._busy = False
         self._stopped = False
+        self._shutdown_requested = threading.Event()
         self._session_factory = session_factory
         self._thread = threading.Thread(
             target=self._run, name="spectromag-hardware", daemon=False
@@ -235,11 +267,21 @@ class HardwareWorker:
             raise ValueError(f"Unknown operation {operation}")
         snapshot = deepcopy(config)
         with self._guard:
-            if self._busy or self._stopped:
+            if self._busy or self._stopped or self._shutdown_requested.is_set():
                 raise RuntimeError("Hardware worker is busy or stopped")
             self._busy = True
             self.cancel.clear()
             self._commands.put_nowait((operation, snapshot))
+
+    def request_shutdown(self):
+        """Cooperative close, including when mainloop exits unexpectedly."""
+        self.cancel.set()
+        self._shutdown_requested.set()
+
+    def wait_stopped(self):
+        if threading.current_thread() is self._thread:
+            raise RuntimeError("Worker cannot join itself")
+        self._thread.join()
 
     def _emit(self, kind, value):
         self.events.put((kind, value))
@@ -247,7 +289,14 @@ class HardwareWorker:
     def _run(self):
         session = self._session_factory(self._emit)
         while True:
-            operation, config = self._commands.get()
+            queued = False
+            try:
+                operation, config = self._commands.get(timeout=0.1)
+                queued = True
+            except queue.Empty:
+                if not self._shutdown_requested.is_set():
+                    continue
+                operation, config = "shutdown", {}
             shutdown = operation == "shutdown"
             try:
                 if shutdown:
@@ -275,7 +324,8 @@ class HardwareWorker:
                     if shutdown:
                         self._stopped = True
                 self._emit("idle", {"operation": operation})
-                self._commands.task_done()
+                if queued:
+                    self._commands.task_done()
             if shutdown:
                 self._emit("stopped", {})
                 return

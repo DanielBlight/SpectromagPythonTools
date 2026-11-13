@@ -7,7 +7,9 @@ authors = [
     { name = "Daniel Blight", email = "daniel.blight@manchester.ac.uk" }
 ]
 requires-python = ">=3.12"
-dependencies = ["pyvisa>=1.14,<2"]
+dependencies = ["pyvisa>=1.14,<2",
+    "matplotlib>=3.8,<4",
+]
 
 [project.scripts]
 spectromagpythontools = "spectromagpythontools:main"

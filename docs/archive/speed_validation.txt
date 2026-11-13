@@ -1,0 +1,26 @@
+Speed checkpoint v1 validation
+Baseline: Spectromag-speed-review-20261111-130547.txt
+Baseline supplied device/routine tests: 73 passed.
+Updated supplied device/routine tests plus new speed regressions: 107 passed.
+Command: PYTHONPATH=src python -m pytest -q tests/test_pgm1se.py tests/test_keithley2600.py tests/test_speed_checkpoint.py
+New regressions: 34 parametrized cases covering averaging, individual readings,
+protocol failures, overflow, output cleanup, cancellation, partial CSV, timing,
+fast mirror polling, periodic configuration refresh and live fault checks.
+Generated TSP command: 16 synthetic control-flow cases passed using Lua 5.4
+and fake SMU tables (both channels, compliance before/after, error queue,
+output off, overflow, runtime exception and NaN). This is NOT Keithley firmware.
+
+Not tested here:
+- Ruff (not installed in authoring environment).
+- Complete GUI suite: snapshot omitted configuration.py, commissioning.py and
+  instance.py. Existing GUI/control.py is unchanged. Full local suite is run
+  automatically by the installer and failure triggers source rollback.
+- Windows native DLLs, real USB instruments, actual firmware 3.2.2 and real timing.
+- Physical electrical/optical safety, hardware freshness or USB-loss handling.
+No synthetic values are represented as experimental measurements.
+No scan-time speedup is claimed before a new hardware map is measured.
+
+Installer transaction smoke tests: PASS for preview, apply, idempotent rerun,
+explicit restore, rollback on simulated validation failure, unexpected-source
+refusal and preservation of private local configuration. Validation was stubbed
+ONLY for transaction tests; the installed core payload's 107 tests ran normally.

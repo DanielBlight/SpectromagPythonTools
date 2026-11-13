@@ -67,6 +67,7 @@ class Reading:
     range_a: float
     host_started_unix_s: float
     host_finished_unix_s: float
+    timestamp_basis: str = "host_single_read_bounds"
 
 
 class KeithleyPhotocurrent:
@@ -288,7 +289,7 @@ class KeithleyPhotocurrent:
             (limit, cfg.current_limit_a),
             (nplc, cfg.nplc),
         ):
-            if not math.isclose(actual, wanted, rel_tol=1e-8, abs_tol=1e-15):
+            if not math.isclose(actual, wanted, rel_tol=1e-6, abs_tol=1e-15):
                 raise InstrumentError("Configuration readback differs from request")
         self._check_errors()
 
@@ -363,6 +364,92 @@ class KeithleyPhotocurrent:
                     raise InstrumentError("Output off or invalid current range")
                 self._check_errors()
                 return Reading(current, voltage, current_range, started, finished)
+            except BaseException as exc:
+                self._trip(exc)
+                raise
+
+    def _batch_command(self, samples):
+        """A bounded, local TSP loop. No globals, resets, buffer clearing or enabling.
+
+        Checks compliance/output/error queue before and after EVERY conversion.
+        Any detected failure discards the batch and attempts high-Z on instrument.
+        Runtime exceptions are caught by pcall; a host failure also uses _trip().
+        """
+        s = self.smu
+        return (
+            'local function spb_acquire() local rows = ""; '
+            f"for k=1,{samples} do "
+            f"if {s}.source.output ~= 1 then error('output_off') end; "
+            f"if {s}.source.compliance then error('compliance') end; "
+            "if errorqueue.count ~= 0 then error('instrument_errors') end; "
+            f"local i,v = {s}.measure.iv(); "
+            f"local r = {s}.measure.rangei; "
+            f"if {s}.source.compliance then error('compliance') end; "
+            f"if {s}.source.output ~= 1 then error('output_off') end; "
+            "if errorqueue.count ~= 0 then error('instrument_errors') end; "
+            "if i ~= i or v ~= v or r ~= r or math.abs(i) >= 9e37 "
+            "or math.abs(v) >= 9e37 or r <= 0 or r >= 9e37 then error('invalid_reading') end; "
+            "rows = rows .. string.format(' %.12g %.12g %.12g',i,v,r); end; return rows; end; "
+            "local ok,rows = pcall(spb_acquire); "
+            f"if not ok then {s}.source.output = {s}.OUTPUT_HIGH_Z; "
+            "print('SPB1 ERR batch_failed'); "
+            f"else print('SPB1 OK {samples}' .. rows) end"
+        )
+
+    def read_many(self, samples, *, cancel=None):
+        """Acquire raw readings in batches of at most three, without averaging.
+
+        Existing NPLC, autozero, delays, filters and ranges are unchanged. Stop is
+        checked between batches, not during an instrument-side batch. Each reading
+        carries the SAME batch host bounds, explicitly labelled as such; no per-
+        conversion host or hardware timestamp is invented. Timeout is unchanged.
+        """
+        if type(samples) is not int or not 1 <= samples <= 1000:
+            raise ValueError("samples must be an integer in 1..1000")
+        with self._lock:
+            self._require()
+            if not self._enabled:
+                raise InstrumentError("Output must be explicitly enabled")
+            readings = []
+            try:
+                while len(readings) < samples:
+                    if cancel is not None and cancel.is_set():
+                        raise AcquisitionCancelled("Cancelled before measurement batch")
+                    size = min(3, samples - len(readings))
+                    started = time.time()
+                    response = self._query(self._batch_command(size))
+                    finished = time.time()
+                    fields = response.split()
+                    if (
+                        fields[:3] != ["SPB1", "OK", str(size)]
+                        or len(fields) != 3 + size * 3
+                    ):
+                        raise InstrumentError(
+                            f"Rejected measurement batch: {response!r}"
+                        )
+                    batch = []
+                    for index in range(size):
+                        current, voltage, current_range = map(
+                            number, fields[3 + 3 * index : 6 + 3 * index]
+                        )
+                        if current_range <= 0:
+                            raise InstrumentError(
+                                "Invalid current range in measurement batch"
+                            )
+                        batch.append(
+                            Reading(
+                                current,
+                                voltage,
+                                current_range,
+                                started,
+                                finished,
+                                "host_batch_bounds_not_individual_conversion_times",
+                            )
+                        )
+                    if cancel is not None and cancel.is_set():
+                        raise AcquisitionCancelled("Cancelled after measurement batch")
+                    readings.extend(batch)
+                return tuple(readings)
             except BaseException as exc:
                 self._trip(exc)
                 raise

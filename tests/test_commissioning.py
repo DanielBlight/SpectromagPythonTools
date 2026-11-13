@@ -394,6 +394,11 @@ class FakeWidget:
 
 
 def fake_tk(monkeypatch):
+    from spectromagpythontools.gui import map_plot
+
+    monkeypatch.setattr(
+        map_plot, "MapPlot", lambda parent: SimpleNamespace(update=lambda *args: None)
+    )
     tk = ModuleType("tkinter")
     for name in ("Frame", "Text", "Canvas", "Tk"):
         setattr(tk, name, FakeWidget)
