@@ -5,6 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from spectromagpythontools.application.control import HardwareWorker, Session
+from spectromagpythontools.application.operator_control import OperatorSession
+from spectromagpythontools.application.operator_profile import (
+    PROFILE_FIELDS,
+    operation_config,
+    validate_profile,
+)
 from spectromagpythontools.configuration import (
     axis_values,
     integer,
@@ -14,13 +21,6 @@ from spectromagpythontools.configuration import (
 )
 from spectromagpythontools.gui.commissioning import (
     Application as CommissioningApplication,
-)
-from spectromagpythontools.gui.control import HardwareWorker, Session
-from spectromagpythontools.gui.operator_control import OperatorSession
-from spectromagpythontools.gui.operator_profile import (
-    PROFILE_FIELDS,
-    operation_config,
-    validate_profile,
 )
 from spectromagpythontools.gui.preferences import FIELDS, load_preferences
 
@@ -467,7 +467,7 @@ class Application(CommissioningApplication):
         if not path:
             return
         try:
-            from spectromagpythontools.gui.map_files import read_map
+            from spectromagpythontools.data.map_files import read_map
 
             xs, ys, cells, status = read_map(path)
             self.grid_axes, self.grid_shape = (xs, ys), (len(xs), len(ys))
@@ -492,7 +492,7 @@ class Application(CommissioningApplication):
 
     def _export_map_png(self, path):
         try:
-            from spectromagpythontools.gui.map_files import save_png
+            from spectromagpythontools.data.map_files import save_png
 
             saved = save_png(self.map_plot.model.figure, path)
             self.log(f"Map PNG saved: {saved}")
@@ -519,3 +519,7 @@ def launch(config_path, tab="mirror"):
         app.worker.wait_stopped()
         if app.log_file is not None and not app.log_file.closed:
             app.log_file.close()
+
+
+# Descriptive aliases; preserve existing imports and object identity.
+OperatorApplication = Application

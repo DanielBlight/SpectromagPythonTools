@@ -23,3 +23,7 @@ def gimbal_mover(
         stable_s=stable_s,
         timeout_s=timeout_s,
     )
+
+
+# Descriptive aliases; preserve existing imports and object identity.
+make_mirror_mover = gimbal_mover

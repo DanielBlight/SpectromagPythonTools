@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import asdict
 from pathlib import Path
 
-from spectromagpythontools.devices.keithley2600 import KeithleyPhotocurrent, Settings
+from spectromagpythontools.devices.keithley2600 import Keithley2600, MeasurementSettings
 from spectromagpythontools.devices.pgm1se import PGM1SE, AxisCalibration, KinesisPPC102
 
 
@@ -82,7 +82,7 @@ def build_smu(section, *, max_abs_bias_v, max_current_a):
         or any(word in resource.upper() for word in ("PLACEHOLDER", "XXXX"))
     ):
         raise ValueError("Replace the Keithley USB VISA resource placeholder")
-    return KeithleyPhotocurrent(
+    return Keithley2600(
         resource,
         expected_model=section.get("model", ""),
         channel=section.get("channel", "a"),
@@ -120,7 +120,7 @@ def measurement(values):
     remote = values.get("remote_sense", False)
     if type(remote) is not bool:
         raise TypeError("remote_sense must be bool")
-    return max_v, max_i, Settings(bias, limit, nplc, current_range, remote)
+    return max_v, max_i, MeasurementSettings(bias, limit, nplc, current_range, remote)
 
 
 def mount_metadata(mount):

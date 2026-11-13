@@ -10,6 +10,7 @@ and acquire step-and-settle photocurrent maps.
 - [Scripting guide](docs/SCRIPTING.md): measurements, closed-loop moves, repeatable
   maps, pandas DataFrames and 2D NumPy arrays.
 - [Development](docs/DEVELOPMENT.md): offline tests, layout and maintenance.
+- [Architecture](docs/ARCHITECTURE.md): module ownership, compatibility and restructure rationale.
 - [Engineering controls](docs/COMMISSIONING.md): commissioning and diagnostics.
 
 On the configured lab PC, double-click `scripts/launch_operator.cmd`.
@@ -35,3 +36,5 @@ $py = 'C:\ProgramData\anaconda3\envs\spectromag\python.exe'
 `--help` does not access hardware. Running without `--help` does.
 Close the GUI and Kinesis before using a hardware script. Review sample bias,
 compliance and mirror travel first. These routines do not control the laser or shutter.
+
+See [Naming reference](docs/NAMING.md) for preferred Python names and compatibility aliases.

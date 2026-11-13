@@ -14,15 +14,15 @@ from pathlib import Path
 from spectromagpythontools.devices.keithley2600 import (
     AcquisitionCancelled,
     InstrumentError,
-    KeithleyPhotocurrent,
-    Reading,
+    Keithley2600,
+    MeasurementReading,
     finite,
 )
 
 
 @dataclass(frozen=True)
 class Point:
-    readings: tuple[Reading, ...]
+    readings: tuple[MeasurementReading, ...]
     mean_current_a: float
     sample_std_current_a: float | None
     mean_voltage_v: float
@@ -31,7 +31,7 @@ class Point:
 
 
 def read_point(
-    smu: KeithleyPhotocurrent,
+    smu: Keithley2600,
     *,
     samples: int = 1,
     settle_s: float = 0,
@@ -90,7 +90,7 @@ def read_point(
 
 
 def scan_map(
-    smu: KeithleyPhotocurrent,
+    smu: Keithley2600,
     *,
     xs,
     ys,
@@ -299,3 +299,9 @@ def scan_map(
             + "\n"
         )
     return count
+
+
+# Descriptive public spellings; original names remain supported.
+PointMeasurement = Point
+measure_point = read_point
+acquire_current_map = scan_map

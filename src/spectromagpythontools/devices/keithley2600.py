@@ -39,7 +39,7 @@ def number(text):
 
 
 @dataclass(frozen=True)
-class Settings:
+class MeasurementSettings:
     bias_v: float
     current_limit_a: float
     nplc: float = 1.0
@@ -61,7 +61,7 @@ class Settings:
 
 
 @dataclass(frozen=True)
-class Reading:
+class MeasurementReading:
     current_a: float
     voltage_v: float
     range_a: float
@@ -70,7 +70,7 @@ class Reading:
     timestamp_basis: str = "host_single_read_bounds"
 
 
-class KeithleyPhotocurrent:
+class Keithley2600:
     """One selected channel, fixed bias, explicit output enable.
 
     max_abs_bias_v and max_current_a are USER-CHOSEN DUT limits, not
@@ -213,9 +213,9 @@ class KeithleyPhotocurrent:
                 self._release(exc)
                 raise
 
-    def configure(self, settings: Settings):
-        if not isinstance(settings, Settings):
-            raise TypeError("settings must be Settings")
+    def configure(self, settings: MeasurementSettings):
+        if not isinstance(settings, MeasurementSettings):
+            raise TypeError("settings must be MeasurementSettings")
         if abs(settings.bias_v) > self.max_abs_bias_v:
             raise ValueError("Bias exceeds your DUT voltage limit")
         if settings.current_limit_a > self.max_current_a:
@@ -336,7 +336,7 @@ class KeithleyPhotocurrent:
         else:
             self.disable_output()
 
-    def read(self) -> Reading:
+    def read(self) -> MeasurementReading:
         """Acquire one current/voltage reading. No motion, settling or averaging."""
         with self._lock:
             self._require()
@@ -363,7 +363,9 @@ class KeithleyPhotocurrent:
                 if output != 1 or current_range <= 0:
                     raise InstrumentError("Output off or invalid current range")
                 self._check_errors()
-                return Reading(current, voltage, current_range, started, finished)
+                return MeasurementReading(
+                    current, voltage, current_range, started, finished
+                )
             except BaseException as exc:
                 self._trip(exc)
                 raise
@@ -437,7 +439,7 @@ class KeithleyPhotocurrent:
                                 "Invalid current range in measurement batch"
                             )
                         batch.append(
-                            Reading(
+                            MeasurementReading(
                                 current,
                                 voltage,
                                 current_range,
@@ -505,3 +507,9 @@ class KeithleyPhotocurrent:
                 raise
             exc.add_note(f"Cleanup: {cleanup}")
         return False
+
+
+# Backward-compatible imports; these are the same classes, not wrappers.
+KeithleyPhotocurrent = Keithley2600
+Settings = MeasurementSettings
+Reading = MeasurementReading

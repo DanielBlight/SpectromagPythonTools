@@ -7,6 +7,7 @@ import queue
 from datetime import datetime
 from pathlib import Path
 
+from spectromagpythontools.application.control import HardwareWorker, Session
 from spectromagpythontools.configuration import (
     axis_values,
     integer,
@@ -14,7 +15,6 @@ from spectromagpythontools.configuration import (
     measurement,
     numeric,
 )
-from spectromagpythontools.gui.control import HardwareWorker, Session
 from spectromagpythontools.gui.preferences import (
     FIELDS,
     load_preferences,
@@ -797,3 +797,7 @@ def launch(config_path, tab="mirror"):
         app.worker.wait_stopped()
         if app.log_file is not None and not app.log_file.closed:
             app.log_file.close()
+
+
+# Descriptive aliases; preserve existing imports and object identity.
+CommissioningApplication = Application
