@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     root = args.project.resolve()
     files = []
-    for folder in ("src", "scripts", "tests", "docs"):
+    for folder in ("src", "scripts", "tests", "docs", "examples"):
         directory = root / folder
         if directory.exists():
             files.extend(
@@ -23,7 +23,8 @@ def main():
                 for p in directory.rglob("*")
                 if p.is_file()
                 and not p.is_symlink()
-                and p.suffix.lower() in (".py", ".md", ".rst", ".txt", ".ps1", ".cmd")
+                and p.suffix.lower()
+                in (".py", ".md", ".rst", ".txt", ".ps1", ".cmd", ".json")
                 and "__pycache__" not in p.parts
             )
     for name in (

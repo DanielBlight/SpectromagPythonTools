@@ -1,13 +1,11 @@
-"""Check package imports without connecting to instruments."""
+"""Compatibility import; implementation lives in cli.check_setup."""
 
-import importlib
+import sys
+from importlib import import_module
 
-
-def main() -> None:
-    for name in ("devices", "routines", "scripts", "gui"):
-        importlib.import_module(f"spectromagpythontools.{name}")
-    print("SpectromagPythonTools imports OK. No hardware was accessed.")
-
+_implementation = import_module("spectromagpythontools.cli.check_setup")
 
 if __name__ == "__main__":
-    main()
+    _implementation.main()
+else:
+    sys.modules[__name__] = _implementation

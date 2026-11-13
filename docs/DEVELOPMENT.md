@@ -2,13 +2,18 @@
 
 ## Layout
 
-- `devices/`: instrument wrappers, no raster logic.
-- `routines/`: point acquisition, mapping, movement coordination and map results.
-- `gui/`: operator/engineering interfaces and viewing.
-- `src/.../scripts/`: packaged command-line entry points.
-- `scripts/`: desktop launcher, source-transfer/speed tools and calibration shim.
-- `examples/`: short editable experiment scripts; no hardware on import.
-- `tests/`: offline regression tests. Keep them even when cleaning the repository.
+See [Architecture](ARCHITECTURE.md) for module ownership and dependency rules.
+
+- `devices/`: wrappers, native transport and device-owned motion state.
+- `routines/`: acquisition and experiment coordination.
+- `application/`: GUI-independent sessions, worker and operator profiles.
+- `data/`: offline CSV/results/export.
+- `visualization/`: headless figures; `gui/`: Tk views and adapters.
+- `diagnostics/`: timing and motion profiling.
+- `cli/`: canonical command entry points; packaged `scripts/` retains old imports.
+- Root `scripts/`: launch, benchmark, source-transfer and calibration tools.
+- `examples/`: explicitly invoked experiments; import and --help access no hardware.
+- `tests/`: regression and architecture contracts.
 
 ## Validate
 

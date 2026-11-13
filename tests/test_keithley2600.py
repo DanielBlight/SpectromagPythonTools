@@ -253,7 +253,7 @@ def test_map(tmp_path):
     assert json.loads(lines[-1][2:])["status"] == "complete"
     rows = list(
         csv.DictReader(
-            io.StringIO("\n".join(l for l in lines if not l.startswith("#")))
+            io.StringIO("\n".join(line for line in lines if not line.startswith("#")))
         )
     )
     assert [int(r["column"]) for r in rows] == [0, 1, 1, 0]

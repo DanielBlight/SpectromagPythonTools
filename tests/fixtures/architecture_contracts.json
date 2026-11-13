@@ -1,0 +1,28 @@
+{
+  "aliases": {
+    "gui.control": "application.control",
+    "gui.operator_control": "application.operator_control",
+    "gui.operator_profile": "application.operator_profile",
+    "gui.map_files": "data.map_files",
+    "routines.motion_profile": "diagnostics.motion_profile",
+    "routines.first_check_profile": "diagnostics.first_check_profile",
+    "routines.feedback_summary": "diagnostics.feedback_summary",
+    "routines.scan_position_cache": "devices.scan_position_cache",
+    "routines.scan_settings": "devices.scan_settings",
+    "scripts.check_setup": "cli.check_setup",
+    "scripts.commissioning_gui": "cli.commissioning_gui",
+    "scripts.fit_pgm1se_conversion": "cli.fit_pgm1se_conversion",
+    "scripts.inspect_pgm1se": "cli.inspect_pgm1se",
+    "scripts.map_timing": "cli.map_timing"
+  },
+  "classes": {
+    "devices.gimbal_types:GimbalError": "ef65b12e207f5e91d2a2d6629e0e5292832c92f883ed7d906fda2dbd18d7d366",
+    "devices.gimbal_types:MoveCancelled": "24fe57bc558dadbc850928f8a1a115f57f5f90ffa9db2c59353b5e85275a5ea7",
+    "devices.gimbal_types:AxisCalibration": "0049585a6a2a13b7d8bdf78ad7296eac31856cf28d98f22a01f0480cf86eb2d5",
+    "devices.gimbal_types:RawState": "d0fc8d76dffde72ee2d4d05e222125e0d643146e97b662cbe50bacd18230bb6b",
+    "devices.gimbal_types:Position": "9260597d4ef1af99f939ef54f5b3ccbcf2fa82af67094c453e7a4582f3a1b1ec",
+    "devices.kinesis_ppc102:_IOSettings": "e2b734deb4fdc6da8669b857e7454459af47b6635e1b8647ebee70e0b681a6a3",
+    "devices.kinesis_ppc102:KinesisPPC102": "9dccab851bccc9bcc4479f610a0ae0085175be8dc2e5f7f18f147bd64c51395b",
+    "devices.pgm1se:PGM1SE": "d0ea70055df22831fc11d8c9ca89cd99b8e890c627141ffdc0e352f92d78db03"
+  }
+}

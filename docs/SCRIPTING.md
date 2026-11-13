@@ -56,7 +56,7 @@ exits, including on normal Python exceptions.
 Runnable example: `examples/mirror_moves.py`.
 
 ```powershell
-& $py .\examples\mirror_moves.py --config '.\config\instruments.local.toml'
+& $py .\examples\mirror_moves.py --config '.\config\instruments.local.toml' --x-mrad 0 --y-mrad 0
 ```
 
 The essential sequence is:

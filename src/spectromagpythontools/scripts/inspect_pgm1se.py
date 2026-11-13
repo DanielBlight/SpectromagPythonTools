@@ -1,34 +1,11 @@
-"""Read-only SDK inspection. Does NOT enable, centre, zero or move the mount."""
+"""Compatibility import; implementation lives in cli.inspect_pgm1se."""
 
-import argparse
-import json
-from dataclasses import asdict
+import sys
+from importlib import import_module
 
-from spectromagpythontools.devices.pgm1se import PGM1SE, KinesisPPC102
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--serial", required=True, help="Actual PPC102 serial (95xxxxxx)"
-    )
-    parser.add_argument(
-        "--kinesis-directory", default=r"C:\Program Files\Thorlabs\Kinesis"
-    )
-    args = parser.parse_args()
-    backend = KinesisPPC102(args.kinesis_directory)
-    with PGM1SE(args.serial, backend=backend) as mount:
-        print(
-            json.dumps(
-                {
-                    "serial": args.serial,
-                    "readback_basis": "SDK cached values; no hardware timestamp",
-                    "axes": [asdict(state) for state in mount.raw_state()],
-                },
-                indent=2,
-            )
-        )
-
+_implementation = import_module("spectromagpythontools.cli.inspect_pgm1se")
 
 if __name__ == "__main__":
-    main()
+    _implementation.main()
+else:
+    sys.modules[__name__] = _implementation
