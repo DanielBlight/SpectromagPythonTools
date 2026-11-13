@@ -1,6 +1,0 @@
-Python: 3.12.16 (main, Oct 28 2026, 03:07:06) [GCC 13.2.0]
-Offline fake transport only; no hardware validation.
-Ruff unavailable; not run.
-
-..............................                                           [100%]
-30 passed in 1.29s

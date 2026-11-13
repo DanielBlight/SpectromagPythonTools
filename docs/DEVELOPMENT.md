@@ -1,63 +1,45 @@
-# Development guide
+# Development
 
-## Keep the design small
+## Layout
 
-- devices/: one understandable wrapper per instrument.
-- routines/: measurement and automation functions using device objects.
-- scripts/: argument handling, configuration, device setup and cleanup.
-- gui/: user interfaces calling the same routines as scripts.
-- tests/: offline tests using simple fake devices.
-- config/: example settings and local machine configuration.
-- data/: generated measurement output, not committed.
-- logs/: generated logs, not committed.
+- `devices/`: instrument wrappers, no raster logic.
+- `routines/`: point acquisition, mapping, movement coordination and map results.
+- `gui/`: operator/engineering interfaces and viewing.
+- `src/.../scripts/`: packaged command-line entry points.
+- `scripts/`: desktop launcher, source-transfer/speed tools and calibration shim.
+- `examples/`: short editable experiment scripts; no hardware on import.
+- `tests/`: offline regression tests. Keep them even when cleaning the repository.
 
-Do not add service containers, dispatchers, plugin systems, generic device
-frameworks or extra architectural layers without a concrete requirement.
+## Validate
 
-## Dependency direction
+With the development environment already installed:
 
-Scripts and GUIs call routines.
-Routines call device wrappers.
-Device wrappers must not depend on routines, scripts or GUIs.
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+python -m ruff check --fix src tests scripts examples
+python -m pytest -q
+```
 
-Keep package __init__.py files lightweight.
-Importing a module must not connect to hardware, move equipment or open a GUI.
-Load optional vendor SDKs when their device is explicitly opened, not during
-ordinary package imports.
+Or on a networked development PC using the existing uv project:
 
-## Device wrappers
+```powershell
+uv run ruff check --fix src tests scripts examples
+uv run pytest -q
+```
 
-Use explicit connect and close operations.
-Use finite communication timeouts.
-Document units and validate commands against documented device limits.
-Do not silently retry movement or other non-idempotent commands.
-Make ownership clear: the code opening a device is responsible for closing it.
+pandas-specific result tests skip if pandas is absent; install pandas in the test
+environment to exercise them. NumPy result tests similarly require NumPy.
+Offline tests do not validate Windows DLL loading or actual hardware timing.
 
-## Routines
+## Cleanup boundary
 
-Pass device objects and settings explicitly.
-Start with ordinary functions rather than a framework.
-Long routines should support cooperative cancellation and progress reporting.
-Check cancellation between bounded operations.
-Record settings, units and timestamps alongside measurement results.
-Avoid overwriting existing measurement output.
+Historical `docs/archive/`, saved validation text and the redundant structure
+write-up are removed. The calibration script in `scripts/` delegates to the
+packaged implementation instead of duplicating it. All runtime drivers, GUI
+modules, tests, source-transfer tools, launchers, lockfile and calibration logic
+are retained. Engineering GUI remains available for diagnosis.
 
-## Scripts and GUIs
-
-Keep measurement logic in routines so both interfaces share it.
-Scripts must use an if __name__ == "__main__" guard.
-Close devices in finally blocks or context managers.
-GUIs must not run blocking acquisition on the GUI thread.
-Choose a GUI toolkit when the first actual interface is implemented.
-
-## Tests
-
-Default tests must be offline and must not require vendor SDKs or GUI packages.
-Use small fake devices to test routines.
-Any future hardware tests must require explicit opt-in.
-
-## Commands
-
-uv run python -m spectromagpythontools.scripts.check_setup
-uv run ruff check --fix .
-uv run python -m pytest
+The updater checks reviewed file contents before modifying/removing them,
+backs up affected originals outside the repository, and leaves unknown files,
+local configuration, data, wheelhouse, environments and Git history untouched.
+It does not recursively purge caches, downloads or unreviewed lab files.

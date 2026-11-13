@@ -1,25 +1,37 @@
 # SpectromagPythonTools
 
-Small instrument wrappers, automation routines and desktop controls for the
-Spectromag laboratory setup. This is independent of Labtools.
+Control a Keithley 2600B-family SourceMeter and a Thorlabs PGM1SE/PPC102 mirror,
+and acquire step-and-settle photocurrent maps.
 
-## Desktop controls
+## Start here
 
-    uv sync
-    uv run python -m spectromagpythontools.scripts.commissioning_gui --tab mirror
+- [User guide](docs/USER_GUIDE.md): edit instrument configuration, launch the GUI,
+  move the mirror, measure current and acquire/view maps.
+- [Scripting guide](docs/SCRIPTING.md): measurements, closed-loop moves, repeatable
+  maps, pandas DataFrames and 2D NumPy arrays.
+- [Development](docs/DEVELOPMENT.md): offline tests, layout and maintenance.
+- [Engineering controls](docs/COMMISSIONING.md): commissioning and diagnostics.
 
-Select the Photocurrent map tab in the same window, or launch with --tab map.
-Startup does not connect to hardware. See docs/COMMISSIONING.md for installation,
-configuration, controls, validation limits and the first hardware-test procedure.
+On the configured lab PC, double-click `scripts/launch_operator.cmd`.
+The default interpreter is `C:\ProgramData\anaconda3\envs\spectromag\python.exe`.
+The local instrument profile is `config/instruments.local.toml`.
 
-Keep machine-specific addresses in config/instruments.local.toml (ignored by Git).
-A shareable placeholder template is config/instruments.example.toml.
+The uploaded review snapshot did not include configuration files. The cleanup
+updater preserves the installed profile, calibration, data and environment.
+It does not create a replacement profile with guessed calibration.
 
-## Validation
+## Runnable examples
 
-    uv run ruff check --fix .
-    uv run python -m pytest -q
+From the repository root, with `src` on PYTHONPATH:
 
-Offline tests use synthetic fixtures, not real measurements. Actual mirror
-motion requires verified count-to-angle conversion. Kinesis/VISA drivers are
-installed separately. Device wrappers contain no mapping or GUI logic.
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+$py = 'C:\ProgramData\anaconda3\envs\spectromag\python.exe'
+& $py .\examples\keithley_measurement.py --help
+& $py .\examples\mirror_moves.py --help
+& $py .\examples\repeatable_map.py --help
+```
+
+`--help` does not access hardware. Running without `--help` does.
+Close the GUI and Kinesis before using a hardware script. Review sample bias,
+compliance and mirror travel first. These routines do not control the laser or shutter.

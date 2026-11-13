@@ -5,7 +5,7 @@
 The current project snapshot has now been inspected. The commissioning GUI uses
 this existing driver through configuration.py and gui/control.py, without changing
 its native command set, calibration gate or cached-readback limitations.
-See docs/COMMISSIONING.md for controls and the first hardware-test procedure.
+See USER_GUIDE.md for operation and COMMISSIONING.md for engineering controls.
 This remains an offline-tested, not hardware-validated, implementation.
 
 ## Files and responsibilities
@@ -14,7 +14,6 @@ This remains an offline-tested, not hardware-validated, implementation.
 - routines/gimbal_positioning.py: small callback adapter for the existing map loop.
 - scripts/inspect_pgm1se.py: read-only SDK state inspection, explicit serial required.
 - tests/test_pgm1se.py: fake backend and mocked native-call tests.
-- docs/pgm1se_validation.txt: actual authoring-environment test results.
 
 No mapping, current measurement, raster generation, CSV output, Qt or GUI logic
 is in the device wrapper. No new Python runtime dependency is needed: ctypes is
@@ -155,7 +154,7 @@ They do not validate the DLL ABI against an installed Windows SDK, actual angle
 conversion, USB-loss detection, settling, sample coordinates or existing project
 integration. Ruff was unavailable in the authoring environment; run local lint.
 
-Next: follow docs/COMMISSIONING.md for read-only inspection, verified angular
-conversion and a separate small-motion hardware validation. Preserve the simple
+For hardware checks, use the engineering controls described in COMMISSIONING.md
+and retain the verified angular conversion. Preserve the simple
 device/routine split and reuse the existing map engine. Do not add an automatic
 full-range calibration sweep or bypass the conversion gate.
